@@ -139,7 +139,7 @@ Options:
 
 TikTok may show CAPTCHA challenges to verify you're human. This scraper handles CAPTCHAs through **manual solving with user confirmation**:
 
-1. **Automatic Detection**: The scraper continuously monitors for CAPTCHA challenges
+1. **Automatic Detection**: The scraper checks for CAPTCHA challenges at key points (page load, during scrolling, before extraction)
 2. **Browser Visibility**: Browser runs in **visible mode by default** (not headless)
 3. **User Prompt**: When CAPTCHA detected, you'll see:
    ```

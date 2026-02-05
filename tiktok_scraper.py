@@ -228,10 +228,9 @@ class TikTokScraper:
         print("⚠️  CAPTCHA DETECTED!")
         print("=" * 50)
         print("\nPlease solve the CAPTCHA in the browser window.")
-        print("Once you have completed it, press ENTER to continue...")
         
         # Simple input() call - wait for user to press ENTER
-        input()
+        input("Once you have completed it, press ENTER to continue...")
         
         print("\n✅ Continuing scraping...")
         
