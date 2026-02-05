@@ -51,3 +51,8 @@ comments.csv
 /tmp/
 temp/
 *.tmp
+
+# Session files
+sessions/
+*.session
+tiktok_session.json
