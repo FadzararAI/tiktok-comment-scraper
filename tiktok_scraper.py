@@ -162,97 +162,7 @@ class TikTokScraper:
             except Exception as e:
                 print(f"Warning: Could not apply localStorage: {e}")
     
-    def detect_captcha(self, page) -> bool:
-        """
-        Detect if CAPTCHA is present on the page.
-        TikTok CAPTCHAs typically appear after clicking the Comments button.
-        
-        Args:
-            page: Playwright page object
-            
-        Returns:
-            bool: True if CAPTCHA detected
-        """
-        try:
-            # Common CAPTCHA indicators for TikTok
-            captcha_selectors = [
-                '[id*="captcha"]',
-                '[class*="captcha"]',
-                'iframe[src*="captcha"]',
-                '.secsdk-captcha-refresh',
-                '#secsdk-captcha-drag-wrapper',
-                '.captcha_verify_container',
-                'div[id*="verify"]',
-                'div[class*="verify"]',
-                'div[class*="Verify"]',
-                '[data-e2e="captcha"]',
-                '.verify-container',
-                '#verify-container',
-                '.secsdk-captcha'
-            ]
-            
-            for selector in captcha_selectors:
-                try:
-                    element = page.locator(selector).first
-                    if element.count() > 0:
-                        return True
-                except Exception:
-                    continue
-            
-            # Check page content for CAPTCHA text
-            try:
-                page_text = page.content()
-                captcha_keywords = ['verify', 'captcha', 'robot', 'verification', 'puzzle', 'challenge']
-                page_text_lower = page_text.lower()
-                
-                # Only flag if multiple keywords are present
-                keyword_count = sum(1 for keyword in captcha_keywords if keyword in page_text_lower)
-                if keyword_count >= 2:
-                    return True
-            except Exception:
-                pass
-            
-            return False
-        except Exception as e:
-            print(f"Warning: Error detecting CAPTCHA: {e}")
-            return False
-    
-    def wait_for_captcha_solve(self, page):
-        """
-        Wait for user to solve CAPTCHA manually with ENTER key confirmation.
-        
-        Args:
-            page: Playwright page object
-            
-        Returns:
-            bool: Always returns True after user presses ENTER
-        """
-        print("\n" + "=" * 60)
-        print("⚠️ CAPTCHA DETECTED!")
-        print("=" * 60)
-        print("Please solve the CAPTCHA in the browser window.")
-        print("Press ENTER when you have solved the CAPTCHA to continue...")
-        print("=" * 60 + "\n")
-        
-        try:
-            # Wait for user to press ENTER
-            input()
-            
-            print("\n" + "=" * 60)
-            print("✅ Continuing scraping...")
-            print("=" * 60 + "\n")
-            
-            # Brief pause to ensure page is ready
-            time.sleep(2)
-            return True
-            
-        except KeyboardInterrupt:
-            print("\n\nScraping interrupted by user.")
-            return False
-        except Exception as e:
-            print(f"Warning: Error waiting for user input: {e}")
-            return False
-    
+
     def random_delay(self, min_seconds: float = 1.5, max_seconds: float = 4.0):
         """
         Add a random delay to mimic human behavior.
@@ -388,12 +298,6 @@ class TikTokScraper:
         no_change_count = 0
         
         for i in range(max_scrolls):
-            # Check for CAPTCHA before scrolling
-            if self.detect_captcha(page):
-                if not self.wait_for_captcha_solve(page):
-                    print("Failed to solve CAPTCHA, stopping scroll.")
-                    break
-            
             # Human-like mouse movement
             self.move_mouse_randomly(page)
             
@@ -693,25 +597,34 @@ class TikTokScraper:
                     print(f"⚠️ Error clicking Comments button: {e}")
                     print("⚠️ Note: Comment extraction may fail if Comments tab wasn't clicked")
                 
-                # WAIT A MOMENT FOR CAPTCHA TO APPEAR (CRITICAL)
+                # WAIT A MOMENT FOR PAGE TO REACT
                 # TikTok shows CAPTCHA after clicking Comments, not on page load
-                # random_delay(2, 3) waits between 2 and 3 seconds with random variance
                 print("Waiting for page to respond to Comments click...")
                 self.random_delay(2, 3)
                 
-                # CHECK FOR CAPTCHA (MOVED HERE - CORRECT TIMING)
-                # This is when TikTok actually shows CAPTCHA challenges
-                print("Checking for CAPTCHA...")
-                if self.detect_captcha(page):
-                    if not self.wait_for_captcha_solve(page):
-                        print("Failed to solve CAPTCHA. Exiting.")
-                        browser.close()
-                        return False
+                # ALWAYS PROMPT FOR CAPTCHA (NO DETECTION NEEDED)
+                # Since CAPTCHA always appears after clicking Comments, just assume it's there
+                print("\n" + "="*50)
+                print("⚠️  CAPTCHA PROMPT")
+                print("="*50)
+                print("\nTikTok will show a CAPTCHA verification.")
+                print("Please solve the CAPTCHA in the browser window.")
+                print("Once you have completed it, press ENTER to continue...")
+                
+                try:
+                    input()  # Wait for user to press ENTER
+                    print("\n✅ Continuing scraping...")
                     
-                    # Save session after successful CAPTCHA solve
+                    # Save session after user confirms CAPTCHA solved
                     print("Saving session for future use...")
                     self.save_session(context)
-                    print("✅ Continuing scraping...")
+                    
+                    # Brief pause to ensure page is ready
+                    time.sleep(2)
+                except KeyboardInterrupt:
+                    print("\n\nScraping interrupted by user.")
+                    browser.close()
+                    return False
                 
                 # WAIT FOR COMMENTS SECTION TO LOAD
                 # Note: Attempts to proceed even if section not detected, for resilience
@@ -723,17 +636,6 @@ class TikTokScraper:
                 
                 # Scroll to load all comments
                 self.scroll_to_load_comments(page)
-                
-                # Final CAPTCHA check before extraction
-                if self.detect_captcha(page):
-                    print("\n⚠️  CAPTCHA detected before comment extraction!")
-                    if not self.wait_for_captcha_solve(page):
-                        print("Failed to solve CAPTCHA. Exiting.")
-                        browser.close()
-                        return False
-                    
-                    # Save session after successful CAPTCHA solve
-                    self.save_session(context)
                 
                 # Extract comments
                 print("Extracting comments...")
