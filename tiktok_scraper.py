@@ -130,12 +130,12 @@ class TikTokScraper:
                     try:
                         username_elem = comment_elem.locator('[data-e2e="comment-username"]').first
                         username = username_elem.inner_text(timeout=1000)
-                    except:
+                    except Exception:
                         try:
                             # Alternative selector
                             username_elem = comment_elem.locator('a[href*="/@"]').first
                             username = username_elem.inner_text(timeout=1000)
-                        except:
+                        except Exception:
                             username = "unknown"
                     
                     # Extract comment text
@@ -143,7 +143,7 @@ class TikTokScraper:
                     try:
                         text_elem = comment_elem.locator('[data-e2e="comment-level-1"], [data-e2e="comment-level-2"]').first
                         comment_text = text_elem.inner_text(timeout=1000)
-                    except:
+                    except Exception:
                         try:
                             # Alternative: look for any text content in comment
                             spans = comment_elem.locator('span').all()
@@ -151,7 +151,7 @@ class TikTokScraper:
                                 text = span.inner_text(timeout=500).strip()
                                 if len(text) > len(comment_text):
                                     comment_text = text
-                        except:
+                        except Exception:
                             comment_text = ""
                     
                     # Extract likes count
@@ -161,7 +161,7 @@ class TikTokScraper:
                         likes_text = likes_elem.inner_text(timeout=1000)
                         # Parse likes (could be "1K", "1.2K", "1M", etc.)
                         likes = self.parse_number(likes_text)
-                    except:
+                    except Exception:
                         likes = 0
                     
                     # Extract timestamp
@@ -171,14 +171,14 @@ class TikTokScraper:
                         timestamp = time_elem.get_attribute('datetime', timeout=1000) or ""
                         if not timestamp:
                             timestamp = time_elem.inner_text(timeout=1000)
-                    except:
+                    except Exception:
                         try:
                             # Look for relative time text like "1d ago", "2h ago"
                             text_content = comment_elem.inner_text(timeout=1000)
                             time_pattern = r'\d+[smhd]\s*ago|\d+-\d+-\d+'
                             match = re.search(time_pattern, text_content)
                             timestamp = match.group(0) if match else ""
-                        except:
+                        except Exception:
                             timestamp = ""
                     
                     # Check if it's a reply
@@ -189,13 +189,13 @@ class TikTokScraper:
                         reply_indicator = comment_elem.locator('[data-e2e="comment-reply-to"]').first
                         is_reply = True
                         reply_to = reply_indicator.inner_text(timeout=1000)
-                    except:
+                    except Exception:
                         # Check for indentation or nesting
                         try:
                             class_attr = comment_elem.get_attribute('class') or ""
                             if 'reply' in class_attr.lower() or 'level-2' in class_attr.lower():
                                 is_reply = True
-                        except:
+                        except Exception:
                             pass
                     
                     # Generate comment ID (using index as simple ID)
@@ -258,7 +258,7 @@ class TikTokScraper:
         try:
             number = float(text)
             return int(number * multiplier)
-        except:
+        except (ValueError, TypeError):
             return 0
     
     def save_to_csv(self, comments: List[Dict]):
@@ -335,7 +335,7 @@ class TikTokScraper:
                     # Look for video or content indicators
                     page.wait_for_selector('video, [data-e2e="browse-video"]', timeout=10000)
                     print("✓ Video page loaded successfully")
-                except:
+                except Exception:
                     print("Warning: Could not verify video loaded. Attempting to continue...")
                 
                 # Scroll to load all comments
