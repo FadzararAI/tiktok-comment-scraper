@@ -28,6 +28,9 @@ except ImportError as e:
 class TikTokScraper:
     """TikTok comment scraper using Playwright for browser automation."""
     
+    # CSV column order
+    CSV_COLUMNS = ['comment_id', 'username', 'comment_text', 'likes', 'timestamp', 'is_reply', 'reply_to']
+    
     def __init__(self, url: str, output_file: str = "comments.csv", headless: bool = False, use_session: bool = False):
         """
         Initialize the TikTok scraper.
@@ -310,88 +313,221 @@ class TikTokScraper:
     def scroll_to_load_comments(self, page, max_scrolls: int = 20, max_retries: int = 3):
         """
         Scroll within the comments container to load more comments.
-        IMPORTANT: Must scroll within .TUXTabBar-content, not the whole window.
+        Uses correct selector for top-level comments with fallback options.
         
         Args:
             page: Playwright page object
             max_scrolls: Maximum number of scroll attempts
             max_retries: Maximum number of retries when no new comments load
         """
-        print("Scrolling to load more comments...")
-        previous_comment_count = 0
+        print("Scrolling to load all comments...")
+        last_count = 0
         no_change_count = 0
         
-        # Try multiple selectors for comment items
+        # Multiple selectors for top-level comments (from most specific to fallbacks)
         comment_selectors = [
-            '.TUXTabBar-content [data-e2e="comment-item"]',
-            '.TUXTabBar-content div[class*="CommentItem"]',
-            '.TUXTabBar-content div[class*="comment-item"]'
+            '.css-1mzopna-7937d88b--DivCommentObjectWrapper',  # Primary selector
+            'div[class*="DivCommentObjectWrapper"]',  # Fallback without hash
+            '[data-e2e="comment-item"]'  # Generic fallback
         ]
         
-        # Find which selector works for counting comments
+        # Find working selector
         active_selector = None
         for selector in comment_selectors:
             try:
                 count = page.locator(selector).count()
                 if count > 0:
                     active_selector = selector
-                    print(f"Using selector for scrolling: {selector}")
+                    print(f"Using selector: {selector}")
                     break
-            except Exception as e:
-                print(f"Note: Selector '{selector}' failed: {e}")
+            except Exception:
                 continue
         
         if not active_selector:
             print("⚠️ No comment selector found, using default")
-            active_selector = '.TUXTabBar-content [data-e2e="comment-item"]'
+            active_selector = comment_selectors[0]
         
         for i in range(max_scrolls):
-            # Human-like mouse movement
-            self.move_mouse_randomly(page)
+            # Count current top-level comments
+            try:
+                current_comments = page.locator(active_selector).count()
+            except Exception as e:
+                print(f"Warning: Error counting comments: {e}")
+                current_comments = last_count
             
-            # Scroll WITHIN the comments container (not the window)
+            # Scroll WITHIN the comments container using scrollBy for incremental scrolling
             try:
                 page.evaluate('''
                     () => {
                         const container = document.querySelector('.TUXTabBar-content');
                         if (container) {
-                            container.scrollTo(0, container.scrollHeight);
+                            container.scrollBy(0, 1000);
                         }
                     }
                 ''')
             except Exception as e:
                 print(f"Warning: Error scrolling container: {e}")
-                # Fallback to window scroll
-                self.human_like_scroll(page, direction="down")
             
-            # Random delay to mimic reading and let content load
-            self.random_delay(2, 4)
+            # Wait for new comments to load
+            self.random_delay(2, 3)
             
             # Check if new comments loaded
-            try:
-                current_comments = page.locator(active_selector).count()
+            if current_comments > last_count:
+                print(f"  Loaded {current_comments} comments...")
+                last_count = current_comments
+                no_change_count = 0  # Reset retry counter
+            else:
+                no_change_count += 1
+                print(f"  No new comments (attempt {no_change_count}/{max_retries})")
                 
-                if current_comments > previous_comment_count:
-                    print(f"Loaded {current_comments} comments...")
-                    previous_comment_count = current_comments
-                    no_change_count = 0  # Reset retry counter
-                else:
-                    no_change_count += 1
-                    print(f"No new comments loaded (attempt {no_change_count}/{max_retries})")
-                    
-                    if no_change_count >= max_retries:
-                        print(f"✓ Finished loading. Total comments: {previous_comment_count}")
-                        break
-                    
-            except Exception as e:
-                print(f"Note: Error checking comment count: {e}")
-                break
+                if no_change_count >= max_retries:
+                    print(f"✓ Finished scrolling. Total top-level comments: {last_count}")
+                    break
         
-        print(f"✓ Scrolling complete. Found {previous_comment_count} comment elements")
+        return last_count
+    
+    def handle_replies(self, page, parent_comment_elem, comments_data, parent_username, parent_index):
+        """
+        Click 'View replies' button and extract nested comments.
+        
+        Args:
+            page: Playwright page object
+            parent_comment_elem: Parent comment element
+            comments_data: List to append reply comments to
+            parent_username: Username of parent commenter
+            parent_index: Index of parent comment
+        """
+        try:
+            # Look for "View replies" button with multiple selectors
+            reply_button_selectors = [
+                'button.TUXButton:has-text("View")',
+                'button:has-text("replies")',
+                'button.TUXButton--borderless:has-text("View")',
+                'button:has-text("View")'
+            ]
+            
+            reply_button = None
+            for selector in reply_button_selectors:
+                try:
+                    reply_button = parent_comment_elem.query_selector(selector)
+                    if reply_button:
+                        break
+                except Exception:
+                    continue
+            
+            if reply_button:
+                # Get reply count from button text
+                try:
+                    button_text = reply_button.inner_text(timeout=1000)
+                    print(f"    → Clicking: {button_text}")
+                    
+                    # Click to expand replies
+                    reply_button.click()
+                    
+                    # Wait for replies to actually load (better than time.sleep)
+                    try:
+                        # Wait for reply elements to appear in DOM
+                        page.wait_for_selector('.css-7waxo-7937d88b--DivCommentItemWrapper, div[class*="DivCommentItemWrapper"]', 
+                                              timeout=3000, state='visible')
+                    except Exception:
+                        # Fallback to short wait if selector fails
+                        time.sleep(1.5)
+                    
+                    # Now extract the reply comments using correct class selector with fallback
+                    # Replies use: css-7waxo-7937d88b--DivCommentItemWrapper
+                    reply_selectors = [
+                        '.css-7waxo-7937d88b--DivCommentItemWrapper',
+                        'div[class*="DivCommentItemWrapper"]'
+                    ]
+                    
+                    reply_elements = []
+                    for selector in reply_selectors:
+                        try:
+                            reply_elements = parent_comment_elem.query_selector_all(selector)
+                            if reply_elements:
+                                break
+                        except Exception:
+                            continue
+                    
+                    print(f"    ✓ Found {len(reply_elements)} replies")
+                    
+                    for j, reply_elem in enumerate(reply_elements):
+                        try:
+                            # Extract reply username
+                            reply_username = "Unknown"
+                            username_selectors = [
+                                'p.TUXText--weight-medium[style*="font-size: 14px"]',
+                                'p.css-u0d6t3-7937d88b--StyledTUXText',
+                                'p.TUXText.TUXText--weight-medium'
+                            ]
+                            for selector in username_selectors:
+                                try:
+                                    username_elem = reply_elem.query_selector(selector)
+                                    if username_elem:
+                                        reply_username = username_elem.inner_text(timeout=1000)
+                                        break
+                                except Exception:
+                                    continue
+                            
+                            # Extract reply text
+                            reply_text = ""
+                            text_selectors = [
+                                'span[data-e2e="comment-text"]',
+                                'p[data-e2e="comment-text"]',
+                                'span.TUXText:not([style*="color: var(--ui-text-3)"])'
+                            ]
+                            for selector in text_selectors:
+                                try:
+                                    text_elem = reply_elem.query_selector(selector)
+                                    if text_elem:
+                                        reply_text = text_elem.inner_text(timeout=1000)
+                                        break
+                                except Exception:
+                                    continue
+                            
+                            # Extract reply likes
+                            reply_likes = 0
+                            likes_selectors = [
+                                'span.TUXText--weight-normal[style*="color: var(--ui-text-3)"]',
+                                'span.TUXText[style*="color: var(--ui-text-3)"][style*="font-size: 14px"]'
+                            ]
+                            for selector in likes_selectors:
+                                try:
+                                    likes_elem = reply_elem.query_selector(selector)
+                                    if likes_elem:
+                                        likes_text = likes_elem.inner_text(timeout=1000)
+                                        # Check if it's actually a number (not "Reply" or other text)
+                                        if self.is_numeric_likes(likes_text):
+                                            reply_likes = self.parse_number(likes_text)
+                                            break
+                                except Exception:
+                                    continue
+                            
+                            reply_data = {
+                                'username': reply_username.strip(),
+                                'comment_text': reply_text.strip(),
+                                'likes': reply_likes,
+                                'timestamp': '',  # Keep consistent with top-level structure
+                                'is_reply': True,
+                                'reply_to': parent_username,
+                                'comment_id': f'comment_{parent_index}_reply_{j}'
+                            }
+                            
+                            comments_data.append(reply_data)
+                            print(f"      ↳ {reply_username}: {reply_text[:40] if reply_text else ''}... (Likes: {reply_likes})")
+                            
+                        except Exception as e:
+                            print(f"⚠️ Error extracting reply {j}: {e}")
+                            continue
+                except Exception as e:
+                    print(f"⚠️ Error clicking reply button: {e}")
+                    
+        except Exception as e:
+            print(f"⚠️ Error handling replies: {e}")
     
     def extract_comments(self, page) -> List[Dict]:
         """
-        Extract comments from the correct container (.TUXTabBar-content).
+        Extract comments using correct CSS selectors for TikTok's structure.
         
         Args:
             page: Playwright page object
@@ -399,102 +535,101 @@ class TikTokScraper:
         Returns:
             List of comment dictionaries
         """
-        comments = []
-        print("\nExtracting comment data...")
+        comments_data = []
+        print("\nExtracting comments...")
         
         try:
-            # STEP 1: Verify the comments container exists
+            # Wait for comments container
             try:
-                container = page.query_selector('.TUXTabBar-content')
-                if not container:
-                    print("❌ Could not find comments container (.TUXTabBar-content)")
-                    return []
+                page.wait_for_selector('.TUXTabBar-content', timeout=10000)
                 print("✓ Comments container found")
             except Exception as e:
-                print(f"❌ Error finding comments container: {e}")
+                print(f"❌ Could not find comments container: {e}")
                 return []
             
-            # STEP 2: Try multiple selectors for comment items
+            # Get all TOP-LEVEL comment wrappers using correct selector with fallback
             comment_selectors = [
-                '[data-e2e="comment-item"]',
-                'div[class*="CommentItem"]',
-                'div[class*="comment-item"]',
-                'div[class*="comment"]'
+                '.css-1mzopna-7937d88b--DivCommentObjectWrapper',  # Primary selector
+                'div[class*="DivCommentObjectWrapper"]',  # Fallback without hash
+                '[data-e2e="comment-item"]'  # Generic fallback
             ]
             
-            comment_elements = []
+            top_level_comments = []
             active_selector = None
-            
             for selector in comment_selectors:
                 try:
-                    # Query within the container
-                    elements = page.locator(f'.TUXTabBar-content {selector}').all()
-                    if elements and len(elements) > 0:
-                        comment_elements = elements
+                    top_level_comments = page.query_selector_all(selector)
+                    if top_level_comments:
                         active_selector = selector
-                        print(f"✓ Found {len(comment_elements)} comments using selector: {selector}")
                         break
-                except Exception as e:
+                except Exception:
                     continue
             
-            if not comment_elements:
-                print("❌ No comment elements found with any selector")
-                print("Available selectors tried:")
-                for sel in comment_selectors:
-                    print(f"  - {sel}")
-                return []
+            print(f"✓ Found {len(top_level_comments)} top-level comments (using: {active_selector})")
             
-            # STEP 3: Extract data from each comment
-            print(f"Extracting data from {len(comment_elements)} comments...")
-            
-            for idx, comment_elem in enumerate(comment_elements):
+            for i, comment_elem in enumerate(top_level_comments):
                 try:
-                    # Extract username
-                    username = ""
-                    try:
-                        username_elem = comment_elem.locator('[data-e2e="comment-username"]').first
-                        username = username_elem.inner_text(timeout=1000)
-                    except Exception:
+                    # Extract username - more flexible selector
+                    username = None
+                    username_selectors = [
+                        'p.TUXText--weight-medium[style*="font-size: 14px"]',
+                        'p.css-u0d6t3-7937d88b--StyledTUXText',
+                        'p.TUXText.TUXText--weight-medium'
+                    ]
+                    for selector in username_selectors:
                         try:
-                            # Alternative selector
-                            username_elem = comment_elem.locator('a[href*="/@"]').first
-                            username = username_elem.inner_text(timeout=1000)
+                            username_elem = comment_elem.query_selector(selector)
+                            if username_elem:
+                                username = username_elem.inner_text(timeout=1000)
+                                break
                         except Exception:
-                            username = "unknown"
+                            continue
+                    
+                    if not username:
+                        username = "Unknown"
                     
                     # Extract comment text
                     comment_text = ""
-                    try:
-                        text_elem = comment_elem.locator('[data-e2e="comment-level-1"], [data-e2e="comment-level-2"]').first
-                        comment_text = text_elem.inner_text(timeout=1000)
-                    except Exception:
+                    text_selectors = [
+                        'span[data-e2e="comment-text"]',
+                        'p[data-e2e="comment-text"]',
+                        'span.TUXText:not([style*="color: var(--ui-text-3)"])',  # Avoid like count
+                    ]
+                    for selector in text_selectors:
                         try:
-                            # Alternative: look for any text content in comment
-                            spans = comment_elem.locator('span').all()
-                            for span in spans:
-                                text = span.inner_text(timeout=500).strip()
-                                if len(text) > len(comment_text):
-                                    comment_text = text
+                            text_elem = comment_elem.query_selector(selector)
+                            if text_elem:
+                                comment_text = text_elem.inner_text(timeout=1000)
+                                break
                         except Exception:
-                            comment_text = ""
+                            continue
                     
-                    # Extract likes count
+                    # Extract likes - specific selector for gray text with numbers
                     likes = 0
-                    try:
-                        likes_elem = comment_elem.locator('[data-e2e="comment-like-count"]').first
-                        likes_text = likes_elem.inner_text(timeout=1000)
-                        # Parse likes (could be "1K", "1.2K", "1M", etc.)
-                        likes = self.parse_number(likes_text)
-                    except Exception:
-                        likes = 0
+                    likes_selectors = [
+                        'span.TUXText--weight-normal[style*="color: var(--ui-text-3)"]',
+                        'span.TUXText[style*="color: var(--ui-text-3)"][style*="font-size: 14px"]',
+                    ]
+                    for selector in likes_selectors:
+                        try:
+                            likes_elem = comment_elem.query_selector(selector)
+                            if likes_elem:
+                                likes_text = likes_elem.inner_text(timeout=1000)
+                                # Check if it's actually a number (not "Reply" or other text)
+                                if self.is_numeric_likes(likes_text):
+                                    likes = self.parse_number(likes_text)
+                                    break
+                        except Exception:
+                            continue
                     
-                    # Extract timestamp
+                    # Extract timestamp (keeping existing logic)
                     timestamp = ""
                     try:
-                        time_elem = comment_elem.locator('time, [datetime]').first
-                        timestamp = time_elem.get_attribute('datetime', timeout=1000) or ""
-                        if not timestamp:
-                            timestamp = time_elem.inner_text(timeout=1000)
+                        time_elem = comment_elem.query_selector('time, [datetime]')
+                        if time_elem:
+                            timestamp = time_elem.get_attribute('datetime', timeout=1000) or ""
+                            if not timestamp:
+                                timestamp = time_elem.inner_text(timeout=1000)
                     except Exception:
                         try:
                             # Look for relative time text like "1d ago", "2h ago"
@@ -505,53 +640,32 @@ class TikTokScraper:
                         except Exception:
                             timestamp = ""
                     
-                    # Check if it's a reply
-                    is_reply = False
-                    reply_to = ""
-                    try:
-                        # Check for reply indicator in the comment structure
-                        reply_indicator = comment_elem.locator('[data-e2e="comment-reply-to"]').first
-                        is_reply = True
-                        reply_to = reply_indicator.inner_text(timeout=1000)
-                    except Exception:
-                        # Check for indentation or nesting
-                        try:
-                            class_attr = comment_elem.get_attribute('class') or ""
-                            if 'reply' in class_attr.lower() or 'level-2' in class_attr.lower():
-                                is_reply = True
-                        except Exception:
-                            pass
-                    
-                    # Generate comment ID (using index as simple ID)
-                    comment_id = f"comment_{idx + 1}"
-                    
                     comment_data = {
-                        'comment_id': comment_id,
-                        'username': username.strip() if username else "unknown",
-                        'comment_text': comment_text.strip() if comment_text else "",
+                        'username': username.strip(),
+                        'comment_text': comment_text.strip(),
                         'likes': likes,
-                        'timestamp': timestamp.strip() if timestamp else "",
-                        'is_reply': is_reply,
-                        'reply_to': reply_to.strip() if reply_to else ""
+                        'timestamp': timestamp.strip(),
+                        'is_reply': False,
+                        'reply_to': '',
+                        'comment_id': f'comment_{i}'
                     }
                     
-                    comments.append(comment_data)
+                    comments_data.append(comment_data)
+                    print(f"  [{i+1}] {username}: {comment_text[:50] if comment_text else ''}... (Likes: {likes})")
                     
-                    if (idx + 1) % 10 == 0:
-                        print(f"Processed {idx + 1}/{len(comment_elements)} comments...")
-                        
+                    # Check for "View replies" button and click it
+                    self.handle_replies(page, comment_elem, comments_data, username, i)
+                    
                 except Exception as e:
-                    print(f"Warning: Error extracting comment {idx + 1}: {e}")
+                    print(f"⚠️ Error extracting comment {i}: {e}")
                     continue
             
-            print(f"✓ Extracted {len(comments)} comments")
+            print(f"\n✓ Extracted {len([c for c in comments_data if not c['is_reply']])} top-level comments and {len([c for c in comments_data if c['is_reply']])} replies")
             
-        except PlaywrightTimeoutError:
-            print("Warning: No comments found on this video (timeout waiting for comments)")
         except Exception as e:
             print(f"Error extracting comments: {e}")
         
-        return comments
+        return comments_data
     
     def parse_number(self, text: str) -> int:
         """
@@ -585,6 +699,21 @@ class TikTokScraper:
         except (ValueError, TypeError):
             return 0
     
+    def is_numeric_likes(self, text: str) -> bool:
+        """
+        Validate if text is numeric (for likes count validation).
+        
+        Args:
+            text: Text to validate
+            
+        Returns:
+            True if text represents a number, False otherwise
+        """
+        if not text:
+            return False
+        cleaned = text.strip().replace('K', '').replace('M', '').replace('.', '').replace(',', '')
+        return cleaned.isdigit()
+    
     def save_to_csv(self, comments: List[Dict]):
         """
         Save comments to CSV file.
@@ -598,18 +727,26 @@ class TikTokScraper:
         
         try:
             df = pd.DataFrame(comments)
-            # Reorder columns to match specification
-            columns_order = ['comment_id', 'username', 'comment_text', 'likes', 'timestamp', 'is_reply', 'reply_to']
-            df = df[columns_order]
+            # Ensure all columns exist
+            for col in self.CSV_COLUMNS:
+                if col not in df.columns:
+                    df[col] = '' if col != 'likes' else 0
+            df = df[self.CSV_COLUMNS]
             
             df.to_csv(self.output_file, index=False, encoding='utf-8', quoting=csv.QUOTE_ALL)
-            print(f"\n✓ Successfully saved {len(comments)} comments to {self.output_file}")
+            
+            # Calculate stats
+            top_level_count = len([c for c in comments if not c.get('is_reply', False)])
+            reply_count = len([c for c in comments if c.get('is_reply', False)])
+            
+            print(f"\n✅ Scraping complete! Saved to {self.output_file}")
+            print(f"   Total comments: {len(comments)} ({top_level_count} top-level, {reply_count} replies)")
         except Exception as e:
             print(f"Error saving to CSV: {e}")
             # Fallback to basic CSV writing
             try:
                 with open(self.output_file, 'w', newline='', encoding='utf-8') as f:
-                    writer = csv.DictWriter(f, fieldnames=comments[0].keys())
+                    writer = csv.DictWriter(f, fieldnames=self.CSV_COLUMNS)
                     writer.writeheader()
                     writer.writerows(comments)
                 print(f"✓ Saved using fallback method to {self.output_file}")
