@@ -214,57 +214,41 @@ class TikTokScraper:
             print(f"Warning: Error detecting CAPTCHA: {e}")
             return False
     
-    def wait_for_captcha_solve(self, page, timeout: int = 300):
+    def wait_for_captcha_solve(self, page):
         """
-        Wait for user to solve CAPTCHA manually.
+        Wait for user to solve CAPTCHA manually with ENTER key confirmation.
         
         Args:
             page: Playwright page object
-            timeout: Maximum wait time in seconds (default: 5 minutes)
             
         Returns:
-            bool: True if CAPTCHA solved, False if timeout
+            bool: Always returns True after user presses ENTER
         """
         print("\n" + "=" * 60)
-        print("⚠️  CAPTCHA DETECTED!")
+        print("⚠️ CAPTCHA DETECTED!")
         print("=" * 60)
         print("Please solve the CAPTCHA in the browser window.")
-        print("The scraper will automatically continue once solved.")
-        print(f"Timeout: {timeout} seconds ({timeout//60} minutes)")
+        print("Press ENTER when you have solved the CAPTCHA to continue...")
         print("=" * 60 + "\n")
         
-        start_time = time.time()
-        check_interval = 2  # Check every 2 seconds
-        
-        while time.time() - start_time < timeout:
-            try:
-                # Check if CAPTCHA is still present
-                if not self.detect_captcha(page):
-                    print("\n" + "=" * 60)
-                    print("✅ CAPTCHA solved! Resuming scraping...")
-                    print("=" * 60 + "\n")
-                    time.sleep(2)  # Brief pause to ensure page is ready
-                    return True
-                
-                # Show progress indicator
-                elapsed = int(time.time() - start_time)
-                remaining = timeout - elapsed
-                if elapsed % 10 == 0:  # Update every 10 seconds
-                    print(f"⏳ Waiting for CAPTCHA solve... ({remaining}s remaining)")
-                
-                time.sleep(check_interval)
-                
-            except Exception as e:
-                print(f"Warning: Error checking CAPTCHA status: {e}")
-                time.sleep(check_interval)
-        
-        print("\n" + "=" * 60)
-        print("❌ CAPTCHA solve timeout!")
-        print("=" * 60)
-        print("The CAPTCHA was not solved within the timeout period.")
-        print("Please try again or use --use-session with a saved session.")
-        print("=" * 60 + "\n")
-        return False
+        try:
+            # Wait for user to press ENTER
+            input()
+            
+            print("\n" + "=" * 60)
+            print("✅ Continuing scraping...")
+            print("=" * 60 + "\n")
+            
+            # Brief pause to ensure page is ready
+            time.sleep(2)
+            return True
+            
+        except KeyboardInterrupt:
+            print("\n\nScraping interrupted by user.")
+            return False
+        except Exception as e:
+            print(f"Warning: Error waiting for user input: {e}")
+            return False
     
     def random_delay(self, min_seconds: float = 1.5, max_seconds: float = 4.0):
         """
@@ -696,6 +680,7 @@ Examples:
 CAPTCHA Handling:
   - Browser runs in VISIBLE mode by default (for manual CAPTCHA solving)
   - When CAPTCHA appears, solve it manually in the browser window
+  - After solving, press ENTER in the terminal to continue
   - Session is saved automatically after solving CAPTCHA
   - Use --use-session on subsequent runs to avoid repeated CAPTCHAs
 
