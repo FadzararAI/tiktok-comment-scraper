@@ -302,10 +302,15 @@ The scraper includes robust error handling for:
 
 ```
 tiktok-comment-scraper/
-├── tiktok_scraper.py   # Main scraper script
-├── requirements.txt    # Python dependencies
-└── README.md          # Documentation (this file)
+├── tiktok_scraper.py      # Main scraper script with CAPTCHA handling
+├── requirements.txt       # Python dependencies
+├── README.md             # Documentation (this file)
+├── example_output.csv    # Example CSV output
+└── sessions/             # Session storage (created automatically)
+    └── tiktok_session.json  # Saved browser session (cookies, localStorage)
 ```
+
+**Note:** The `sessions/` directory is created automatically when you first solve a CAPTCHA.
 
 ### Contributing
 

@@ -7,7 +7,6 @@ Extracts comments, replies, and user information from public TikTok videos.
 import argparse
 import csv
 import json
-import os
 import random
 import re
 import time
