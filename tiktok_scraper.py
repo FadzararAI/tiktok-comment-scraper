@@ -214,13 +214,12 @@ class TikTokScraper:
             print(f"Warning: Error detecting CAPTCHA: {e}")
             return False
     
-    def wait_for_captcha_solve(self, page, timeout: int = 300):
+    def wait_for_captcha_solve(self, page):
         """
         Wait for user to solve CAPTCHA manually with user confirmation.
         
         Args:
             page: Playwright page object
-            timeout: Not used (kept for compatibility)
             
         Returns:
             bool: Always returns True after user presses ENTER

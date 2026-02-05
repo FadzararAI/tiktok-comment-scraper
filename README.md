@@ -257,7 +257,7 @@ The scraper includes robust error handling for:
 **"CAPTCHA DETECTED" message appears:**
 - ✅ This is normal! Switch to the browser window and solve it manually
 - ✅ Follow the on-screen instructions (slide puzzle, click images, etc.)
-- ✅ The scraper will automatically continue after you solve it
+- ✅ After solving, return to the terminal and press ENTER to continue
 - ✅ Your session will be saved to avoid future CAPTCHAs
 
 **"Forgot to press ENTER after solving":**
