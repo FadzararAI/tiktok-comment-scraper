@@ -1,0 +1,13 @@
+# TikTok Comment Scraper Dependencies
+
+# Browser automation
+playwright>=1.40.0
+
+# Data processing and CSV handling
+pandas>=2.0.0
+
+# Optional: HTML parsing (if needed for fallback)
+beautifulsoup4>=4.12.0
+
+# Optional: HTTP requests (for fallback methods)
+requests>=2.31.0

@@ -1,0 +1,11 @@
+comment_id,username,comment_text,likes,timestamp,is_reply,reply_to
+comment_1,@user123,"This is an amazing video! Love it!",1250,2024-01-15,False,
+comment_2,@user456,"Thanks for sharing this content",340,2024-01-15,False,
+comment_3,@user789,"I totally agree with you!",89,2024-01-16,True,@user123
+comment_4,@tiktokfan,"Can't stop watching this 😍",523,2024-01-16,False,
+comment_5,@user123,"Thank you so much!",45,2024-01-16,True,@user456
+comment_6,@newcomer,"First time seeing this, incredible!",12,2024-01-17,False,
+comment_7,@creator_pro,"Great editing skills here",890,2024-01-17,False,
+comment_8,@user456,"You're welcome!",23,2024-01-17,True,@user123
+comment_9,@music_lover,"What's the song name?",156,2024-01-18,False,
+comment_10,@helper,"It's 'Song Title' by Artist",67,2024-01-18,True,@music_lover
