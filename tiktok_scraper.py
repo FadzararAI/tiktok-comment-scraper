@@ -607,7 +607,7 @@ class TikTokScraper:
                 print("\n" + "="*50)
                 print("⚠️  CAPTCHA PROMPT")
                 print("="*50)
-                print("\nTikTok will show a CAPTCHA verification.")
+                print("\nTikTok typically shows a CAPTCHA verification.")
                 print("Please solve the CAPTCHA in the browser window.")
                 print("Once you have completed it, press ENTER to continue...")
                 
