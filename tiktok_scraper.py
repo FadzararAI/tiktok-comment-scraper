@@ -176,14 +176,12 @@ class TikTokScraper:
         try:
             # Common CAPTCHA indicators for TikTok
             captcha_selectors = [
-                'div[id*="captcha"]',
-                'div[class*="captcha"]',
+                '[id*="captcha"]',
+                '[class*="captcha"]',
                 'iframe[src*="captcha"]',
                 '.secsdk-captcha-refresh',
                 '#secsdk-captcha-drag-wrapper',
                 '.captcha_verify_container',
-                '[id*="captcha"]',
-                '[class*="captcha"]',
                 'div[id*="verify"]',
                 'div[class*="verify"]',
                 'div[class*="Verify"]',
@@ -697,6 +695,7 @@ class TikTokScraper:
                 
                 # WAIT A MOMENT FOR CAPTCHA TO APPEAR (CRITICAL)
                 # TikTok shows CAPTCHA after clicking Comments, not on page load
+                # random_delay(2, 3) waits between 2 and 3 seconds with random variance
                 print("Waiting for page to respond to Comments click...")
                 self.random_delay(2, 3)
                 
