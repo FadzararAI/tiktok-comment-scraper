@@ -165,6 +165,7 @@ class TikTokScraper:
     def detect_captcha(self, page) -> bool:
         """
         Detect if CAPTCHA is present on the page.
+        TikTok CAPTCHAs typically appear after clicking the Comments button.
         
         Args:
             page: Playwright page object
@@ -175,17 +176,19 @@ class TikTokScraper:
         try:
             # Common CAPTCHA indicators for TikTok
             captcha_selectors = [
-                'iframe[src*="captcha"]',
                 '[id*="captcha"]',
                 '[class*="captcha"]',
+                'iframe[src*="captcha"]',
+                '.secsdk-captcha-refresh',
+                '#secsdk-captcha-drag-wrapper',
+                '.captcha_verify_container',
                 'div[id*="verify"]',
                 'div[class*="verify"]',
                 'div[class*="Verify"]',
                 '[data-e2e="captcha"]',
                 '.verify-container',
                 '#verify-container',
-                '.secsdk-captcha',
-                '.captcha_verify_container'
+                '.secsdk-captcha'
             ]
             
             for selector in captcha_selectors:
@@ -664,7 +667,7 @@ class TikTokScraper:
                     except Exception as e:
                         print(f"Warning: Error loading with session: {e}")
                 else:
-                    print(f"Loading TikTok video...")
+                    print(f"Navigating to video...")
                     try:
                         page.goto(self.url, wait_until='networkidle', timeout=30000)
                     except Exception as e:
@@ -674,18 +677,6 @@ class TikTokScraper:
                 # Wait a bit for dynamic content with random delay
                 self.random_delay(2, 4)
                 
-                # Check for CAPTCHA immediately after page load
-                if self.detect_captcha(page):
-                    print("\n⚠️  CAPTCHA detected on page load!")
-                    if not self.wait_for_captcha_solve(page):
-                        print("Failed to solve CAPTCHA. Exiting.")
-                        browser.close()
-                        return False
-                    
-                    # Save session after successful CAPTCHA solve
-                    print("Saving session for future use...")
-                    self.save_session(context)
-                
                 # Check if page loaded successfully
                 try:
                     # Look for video or content indicators
@@ -694,7 +685,7 @@ class TikTokScraper:
                 except Exception:
                     print("Warning: Could not verify video loaded. Attempting to continue...")
                 
-                # CLICK THE COMMENTS BUTTON (NEW STEP - CRITICAL)
+                # CLICK THE COMMENTS BUTTON (CRITICAL STEP)
                 # Note: Gracefully degrades if button not found, as UI structure may vary
                 try:
                     self.click_comments_button(page)
@@ -702,7 +693,27 @@ class TikTokScraper:
                     print(f"⚠️ Error clicking Comments button: {e}")
                     print("⚠️ Note: Comment extraction may fail if Comments tab wasn't clicked")
                 
-                # WAIT FOR COMMENTS SECTION TO LOAD (NEW STEP - CRITICAL)
+                # WAIT A MOMENT FOR CAPTCHA TO APPEAR (CRITICAL)
+                # TikTok shows CAPTCHA after clicking Comments, not on page load
+                # random_delay(2, 3) waits between 2 and 3 seconds with random variance
+                print("Waiting for page to respond to Comments click...")
+                self.random_delay(2, 3)
+                
+                # CHECK FOR CAPTCHA (MOVED HERE - CORRECT TIMING)
+                # This is when TikTok actually shows CAPTCHA challenges
+                print("Checking for CAPTCHA...")
+                if self.detect_captcha(page):
+                    if not self.wait_for_captcha_solve(page):
+                        print("Failed to solve CAPTCHA. Exiting.")
+                        browser.close()
+                        return False
+                    
+                    # Save session after successful CAPTCHA solve
+                    print("Saving session for future use...")
+                    self.save_session(context)
+                    print("✅ Continuing scraping...")
+                
+                # WAIT FOR COMMENTS SECTION TO LOAD
                 # Note: Attempts to proceed even if section not detected, for resilience
                 try:
                     self.wait_for_comments_section(page)
@@ -725,6 +736,7 @@ class TikTokScraper:
                     self.save_session(context)
                 
                 # Extract comments
+                print("Extracting comments...")
                 self.comments = self.extract_comments(page)
                 
                 # Save session if we successfully scraped without using a session
