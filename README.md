@@ -31,7 +31,7 @@ A Python-based tool for extracting comments, replies, and user information from 
 
 🤖 **Anti-Detection Features:**
 - Human-like scrolling patterns with random speeds
-- Random delays between actions (2-5 seconds)
+- Random delays between actions (1.5-4 seconds)
 - Mouse movement simulation
 - Realistic browser profile (user-agent, viewport, locale)
 - Rate limiting to respect TikTok's servers

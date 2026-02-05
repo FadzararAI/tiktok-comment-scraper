@@ -131,8 +131,15 @@ class TikTokScraper:
             # Note: localStorage needs to be set on a page, we'll do this after navigation
             self.session_local_storage = session_data.get('local_storage', {})
             
-            session_age = datetime.now() - datetime.fromisoformat(session_data.get('timestamp', datetime.now().isoformat()))
-            print(f"✓ Session age: {session_age.days} days")
+            # Calculate session age if timestamp available
+            if 'timestamp' in session_data:
+                try:
+                    session_age = datetime.now() - datetime.fromisoformat(session_data['timestamp'])
+                    print(f"✓ Session age: {session_age.days} days")
+                except Exception:
+                    print("✓ Session loaded (age unknown)")
+            else:
+                print("✓ Session loaded (age unknown)")
             
             return True
         except Exception as e:
@@ -149,7 +156,7 @@ class TikTokScraper:
         if hasattr(self, 'session_local_storage') and self.session_local_storage:
             try:
                 for key, value in self.session_local_storage.items():
-                    page.evaluate(f"({{key, value}}) => window.localStorage.setItem(key, value)", 
+                    page.evaluate("({key, value}) => window.localStorage.setItem(key, value)", 
                                   {'key': key, 'value': value})
                 print(f"✓ Applied {len(self.session_local_storage)} localStorage items")
             except Exception as e:
