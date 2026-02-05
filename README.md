@@ -136,19 +136,20 @@ Options:
 
 ### How It Works
 
-TikTok may show CAPTCHA challenges to verify you're human. This scraper handles CAPTCHAs through **manual solving**:
+TikTok may show CAPTCHA challenges to verify you're human. This scraper handles CAPTCHAs through **manual solving with user confirmation**:
 
 1. **Automatic Detection**: The scraper continuously monitors for CAPTCHA challenges
 2. **Browser Visibility**: Browser runs in **visible mode by default** (not headless)
 3. **User Prompt**: When CAPTCHA detected, you'll see:
    ```
-   ⚠️  CAPTCHA DETECTED!
+   ⚠️ CAPTCHA DETECTED!
    Please solve the CAPTCHA in the browser window.
-   The scraper will automatically continue once solved.
+   Press ENTER when you have solved the CAPTCHA to continue...
    ```
 4. **Manual Solve**: Switch to the browser window and solve the CAPTCHA (puzzle, slider, etc.)
-5. **Auto-Resume**: Once solved, scraping automatically continues
-6. **Session Save**: Your session is saved to avoid future CAPTCHAs
+5. **User Confirmation**: After solving, press ENTER in the terminal to continue
+6. **Resume Scraping**: The scraper will display "✅ Continuing scraping..." and resume
+7. **Session Save**: Your session is saved to avoid future CAPTCHAs
 
 ### Session Management
 
@@ -171,12 +172,23 @@ python tiktok_scraper.py --url "https://www.tiktok.com/@user/video/456" --use-se
 - Reusable across different videos
 - Automatically saved after successful CAPTCHA solve
 
-### CAPTCHA Timeout
+### User Confirmation Mode
 
-- Default timeout: **5 minutes** (300 seconds)
-- If you don't solve within timeout, scraping stops
-- You can retry by running the command again
-- Progress indicator shows remaining time
+**No Timeout**: The scraper waits indefinitely for you to press ENTER - take as long as you need to solve the CAPTCHA!
+
+**How to Use:**
+1. When you see the "CAPTCHA DETECTED" message, switch to the browser window
+2. Solve the CAPTCHA challenge (puzzle, slider, or whatever TikTok shows)
+3. Return to the terminal
+4. Press ENTER to confirm you've solved it
+5. The scraper will continue automatically
+
+**Benefits of This Approach:**
+- ✅ No false positives from automatic detection
+- ✅ You have full control over when to continue
+- ✅ No timeout pressure - take as long as needed
+- ✅ Simple and reliable
+- ✅ Clear and predictable behavior
 
 ### Tips for Avoiding CAPTCHAs
 
@@ -255,12 +267,14 @@ The scraper includes robust error handling for:
 **"CAPTCHA DETECTED" message appears:**
 - ✅ This is normal! Switch to the browser window and solve it manually
 - ✅ Follow the on-screen instructions (slide puzzle, click images, etc.)
-- ✅ The scraper will automatically continue after you solve it
+- ✅ After solving, return to the terminal and **press ENTER**
+- ✅ The scraper will display "✅ Continuing scraping..." and resume
 - ✅ Your session will be saved to avoid future CAPTCHAs
 
-**"CAPTCHA solve timeout":**
-- You took too long to solve (> 5 minutes)
-- Run the command again and solve faster
+**Important: Don't forget to press ENTER!**
+- The scraper waits for you to press ENTER after solving the CAPTCHA
+- There's no timeout - take as long as you need
+- If you forget to press ENTER, the scraper will just wait indefinitely
 - Or use `--use-session` if you've solved before
 
 **Frequent CAPTCHAs:**
