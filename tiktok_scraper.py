@@ -181,7 +181,7 @@ class TikTokScraper:
                 'iframe[src*="captcha"]',
                 '.secsdk-captcha-refresh',
                 '#secsdk-captcha-drag-wrapper',
-                'div.captcha_verify_container',
+                '.captcha_verify_container',
                 '[id*="captcha"]',
                 '[class*="captcha"]',
                 'div[id*="verify"]',
@@ -704,9 +704,6 @@ class TikTokScraper:
                 # This is when TikTok actually shows CAPTCHA challenges
                 print("Checking for CAPTCHA...")
                 if self.detect_captcha(page):
-                    print("\n" + "=" * 50)
-                    print("⚠️  CAPTCHA DETECTED!")
-                    print("=" * 50)
                     if not self.wait_for_captcha_solve(page):
                         print("Failed to solve CAPTCHA. Exiting.")
                         browser.close()
