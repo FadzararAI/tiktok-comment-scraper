@@ -276,8 +276,9 @@ class TikTokScraper:
         
         # Step 2: CRITICAL - Wait for content transformation
         # The container exists immediately but content takes time to change from videos to comments
+        # This is necessary because TikTok dynamically swaps content in the same container
         print("Waiting for content transformation (videos → comments)...")
-        time.sleep(3)  # Give time for content to swap
+        time.sleep(3)  # Required: Give time for content to swap (based on TikTok's behavior)
         
         # Step 3: Wait for actual comment elements to appear
         print("Waiting for comment items to appear...")
@@ -296,15 +297,17 @@ class TikTokScraper:
                 print(f"✓ Found {count} comments using selector: {selector}")
                 return True
             except PlaywrightTimeoutError:
+                print(f"Note: Selector '{selector}' timed out")
                 continue
             except Exception as e:
+                print(f"Note: Selector '{selector}' failed: {e}")
                 continue
         
         print("⚠️ Could not find comment elements in container")
         print("⚠️ The container may be empty or selectors may need updating")
         return False
     
-    def scroll_to_load_comments(self, page, max_scrolls: int = 20):
+    def scroll_to_load_comments(self, page, max_scrolls: int = 20, max_retries: int = 3):
         """
         Scroll within the comments container to load more comments.
         IMPORTANT: Must scroll within .TUXTabBar-content, not the whole window.
@@ -312,11 +315,11 @@ class TikTokScraper:
         Args:
             page: Playwright page object
             max_scrolls: Maximum number of scroll attempts
+            max_retries: Maximum number of retries when no new comments load
         """
         print("Scrolling to load more comments...")
         previous_comment_count = 0
         no_change_count = 0
-        max_retries = 3
         
         # Try multiple selectors for comment items
         comment_selectors = [
@@ -334,7 +337,8 @@ class TikTokScraper:
                     active_selector = selector
                     print(f"Using selector for scrolling: {selector}")
                     break
-            except Exception:
+            except Exception as e:
+                print(f"Note: Selector '{selector}' failed: {e}")
                 continue
         
         if not active_selector:
