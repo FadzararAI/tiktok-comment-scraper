@@ -300,6 +300,79 @@ class TikTokScraper:
         except Exception as e:
             print(f"Warning: Error moving mouse: {e}")
     
+    def click_comments_button(self, page) -> bool:
+        """
+        Click the Comments tab button to load the comments section.
+        Tries multiple selectors as fallback in case TikTok changes class names.
+        
+        Args:
+            page: Playwright page object
+            
+        Returns:
+            bool: True if button was clicked successfully, False otherwise
+        """
+        print("Clicking Comments tab...")
+        
+        # Multiple selectors to try (in order of preference)
+        selectors = [
+            'button#comments',
+            'button[id="comments"]',
+            'button.TUXTabBar-itemTitle:has-text("Comments")',
+            'button:has-text("Comments")'
+        ]
+        
+        for selector in selectors:
+            try:
+                # Try to find and click the button with this selector
+                button = page.wait_for_selector(selector, timeout=5000, state='visible')
+                if button:
+                    button.click()
+                    print("✓ Comments tab clicked")
+                    return True
+            except PlaywrightTimeoutError:
+                continue
+            except Exception as e:
+                print(f"Note: Selector '{selector}' failed: {e}")
+                continue
+        
+        print("⚠️ Could not find Comments button, trying to proceed anyway...")
+        return False
+    
+    def wait_for_comments_section(self, page) -> bool:
+        """
+        Wait for the comments section to load after clicking the Comments button.
+        
+        Args:
+            page: Playwright page object
+            
+        Returns:
+            bool: True if comments section loaded, False otherwise
+        """
+        print("Waiting for comments section to load...")
+        
+        # Selectors to wait for
+        selectors = [
+            '.TUXTabBar-content',
+            'div.TUXTabBar-content',
+            '#main-content-video_detail .TUXTabBar-content'
+        ]
+        
+        for selector in selectors:
+            try:
+                page.wait_for_selector(selector, timeout=10000, state='visible')
+                print("✓ Comments section loaded")
+                # Add small delay for content to fully render
+                time.sleep(2)
+                return True
+            except PlaywrightTimeoutError:
+                continue
+            except Exception as e:
+                print(f"Note: Waiting for '{selector}' failed: {e}")
+                continue
+        
+        print("⚠️ Comments section may not have loaded properly")
+        return False
+    
     def scroll_to_load_comments(self, page, max_scrolls: int = 20):
         """
         Scroll the page to load more comments with human-like behavior.
@@ -621,6 +694,18 @@ class TikTokScraper:
                     print("✓ Video page loaded successfully")
                 except Exception:
                     print("Warning: Could not verify video loaded. Attempting to continue...")
+                
+                # CLICK THE COMMENTS BUTTON (NEW STEP - CRITICAL)
+                try:
+                    self.click_comments_button(page)
+                except Exception as e:
+                    print(f"⚠️ Error clicking Comments button: {e}")
+                
+                # WAIT FOR COMMENTS SECTION TO LOAD (NEW STEP - CRITICAL)
+                try:
+                    self.wait_for_comments_section(page)
+                except Exception as e:
+                    print(f"⚠️ Error waiting for comments section: {e}")
                 
                 # Scroll to load all comments
                 self.scroll_to_load_comments(page)
