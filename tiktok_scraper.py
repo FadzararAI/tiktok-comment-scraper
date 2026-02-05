@@ -253,6 +253,7 @@ class TikTokScraper:
     def wait_for_comments_section(self, page) -> bool:
         """
         Wait for the comments section to load after clicking the Comments button.
+        IMPORTANT: The container exists immediately but content changes from videos to comments.
         
         Args:
             page: Playwright page object
@@ -260,78 +261,137 @@ class TikTokScraper:
         Returns:
             bool: True if comments section loaded, False otherwise
         """
-        print("Waiting for comments section to load...")
+        print("Waiting for comments to load...")
         
-        # Selectors to wait for
-        selectors = [
-            '.TUXTabBar-content',
-            'div.TUXTabBar-content',
-            '#main-content-video_detail .TUXTabBar-content'
+        # Step 1: Wait for the tab content container to be visible
+        try:
+            page.wait_for_selector('.TUXTabBar-content', state='visible', timeout=10000)
+            print("✓ Comments container found")
+        except PlaywrightTimeoutError:
+            print("❌ Could not find comments container (.TUXTabBar-content)")
+            return False
+        except Exception as e:
+            print(f"❌ Error waiting for comments container: {e}")
+            return False
+        
+        # Step 2: CRITICAL - Wait for content transformation
+        # The container exists immediately but content takes time to change from videos to comments
+        # This is necessary because TikTok dynamically swaps content in the same container
+        print("Waiting for content transformation (videos → comments)...")
+        time.sleep(3)  # Required: Give time for content to swap (based on TikTok's behavior)
+        
+        # Step 3: Wait for actual comment elements to appear
+        print("Waiting for comment items to appear...")
+        comment_selectors = [
+            '.TUXTabBar-content [data-e2e="comment-item"]',
+            '.TUXTabBar-content div[class*="CommentItem"]',
+            '.TUXTabBar-content div[class*="comment-item"]',
+            '.TUXTabBar-content div[class*="comment"]'
         ]
         
-        for selector in selectors:
+        for selector in comment_selectors:
             try:
                 page.wait_for_selector(selector, timeout=10000, state='visible')
-                print("✓ Comments section loaded")
-                # Small delay to ensure dynamic content fully renders after state change
-                time.sleep(2)
+                # Count how many we found
+                count = page.locator(selector).count()
+                print(f"✓ Found {count} comments using selector: {selector}")
                 return True
             except PlaywrightTimeoutError:
+                print(f"Note: Selector '{selector}' timed out")
                 continue
             except Exception as e:
-                print(f"Note: Waiting for '{selector}' failed: {e}")
+                print(f"Note: Selector '{selector}' failed: {e}")
                 continue
         
-        print("⚠️ Comments section may not have loaded properly")
+        print("⚠️ Could not find comment elements in container")
+        print("⚠️ The container may be empty or selectors may need updating")
         return False
     
-    def scroll_to_load_comments(self, page, max_scrolls: int = 20):
+    def scroll_to_load_comments(self, page, max_scrolls: int = 20, max_retries: int = 3):
         """
-        Scroll the page to load more comments with human-like behavior.
+        Scroll within the comments container to load more comments.
+        IMPORTANT: Must scroll within .TUXTabBar-content, not the whole window.
         
         Args:
             page: Playwright page object
             max_scrolls: Maximum number of scroll attempts
+            max_retries: Maximum number of retries when no new comments load
         """
-        print("Loading comments (scrolling with human-like behavior)...")
+        print("Scrolling to load more comments...")
         previous_comment_count = 0
         no_change_count = 0
+        
+        # Try multiple selectors for comment items
+        comment_selectors = [
+            '.TUXTabBar-content [data-e2e="comment-item"]',
+            '.TUXTabBar-content div[class*="CommentItem"]',
+            '.TUXTabBar-content div[class*="comment-item"]'
+        ]
+        
+        # Find which selector works for counting comments
+        active_selector = None
+        for selector in comment_selectors:
+            try:
+                count = page.locator(selector).count()
+                if count > 0:
+                    active_selector = selector
+                    print(f"Using selector for scrolling: {selector}")
+                    break
+            except Exception as e:
+                print(f"Note: Selector '{selector}' failed: {e}")
+                continue
+        
+        if not active_selector:
+            print("⚠️ No comment selector found, using default")
+            active_selector = '.TUXTabBar-content [data-e2e="comment-item"]'
         
         for i in range(max_scrolls):
             # Human-like mouse movement
             self.move_mouse_randomly(page)
             
-            # Human-like scrolling
-            self.human_like_scroll(page, direction="down")
+            # Scroll WITHIN the comments container (not the window)
+            try:
+                page.evaluate('''
+                    () => {
+                        const container = document.querySelector('.TUXTabBar-content');
+                        if (container) {
+                            container.scrollTo(0, container.scrollHeight);
+                        }
+                    }
+                ''')
+            except Exception as e:
+                print(f"Warning: Error scrolling container: {e}")
+                # Fallback to window scroll
+                self.human_like_scroll(page, direction="down")
             
-            # Random delay to mimic reading
+            # Random delay to mimic reading and let content load
             self.random_delay(2, 4)
             
             # Check if new comments loaded
             try:
-                current_comments = page.locator('[data-e2e="comment-item"]').count()
+                current_comments = page.locator(active_selector).count()
                 
-                if current_comments == previous_comment_count:
-                    no_change_count += 1
-                    if no_change_count >= 3:  # Stop if no new comments after 3 attempts
-                        print(f"No more comments to load (reached end).")
-                        break
+                if current_comments > previous_comment_count:
+                    print(f"Loaded {current_comments} comments...")
+                    previous_comment_count = current_comments
+                    no_change_count = 0  # Reset retry counter
                 else:
-                    no_change_count = 0
-                    print(f"Loaded {current_comments} comments so far...")
+                    no_change_count += 1
+                    print(f"No new comments loaded (attempt {no_change_count}/{max_retries})")
                     
-                previous_comment_count = current_comments
+                    if no_change_count >= max_retries:
+                        print(f"✓ Finished loading. Total comments: {previous_comment_count}")
+                        break
+                    
             except Exception as e:
                 print(f"Note: Error checking comment count: {e}")
                 break
         
-        # Final scroll up to ensure all comments are in view
-        page.evaluate("window.scrollTo(0, 0)")
-        self.random_delay(1, 2)
+        print(f"✓ Scrolling complete. Found {previous_comment_count} comment elements")
     
     def extract_comments(self, page) -> List[Dict]:
         """
-        Extract comments from the page.
+        Extract comments from the correct container (.TUXTabBar-content).
         
         Args:
             page: Playwright page object
@@ -340,15 +400,52 @@ class TikTokScraper:
             List of comment dictionaries
         """
         comments = []
-        print("Extracting comment data...")
+        print("\nExtracting comment data...")
         
         try:
-            # Wait for comments to load
-            page.wait_for_selector('[data-e2e="comment-item"]', timeout=10000)
+            # STEP 1: Verify the comments container exists
+            try:
+                container = page.query_selector('.TUXTabBar-content')
+                if not container:
+                    print("❌ Could not find comments container (.TUXTabBar-content)")
+                    return []
+                print("✓ Comments container found")
+            except Exception as e:
+                print(f"❌ Error finding comments container: {e}")
+                return []
             
-            # Get all comment elements
-            comment_elements = page.locator('[data-e2e="comment-item"]').all()
-            print(f"Found {len(comment_elements)} comment elements")
+            # STEP 2: Try multiple selectors for comment items
+            comment_selectors = [
+                '[data-e2e="comment-item"]',
+                'div[class*="CommentItem"]',
+                'div[class*="comment-item"]',
+                'div[class*="comment"]'
+            ]
+            
+            comment_elements = []
+            active_selector = None
+            
+            for selector in comment_selectors:
+                try:
+                    # Query within the container
+                    elements = page.locator(f'.TUXTabBar-content {selector}').all()
+                    if elements and len(elements) > 0:
+                        comment_elements = elements
+                        active_selector = selector
+                        print(f"✓ Found {len(comment_elements)} comments using selector: {selector}")
+                        break
+                except Exception as e:
+                    continue
+            
+            if not comment_elements:
+                print("❌ No comment elements found with any selector")
+                print("Available selectors tried:")
+                for sel in comment_selectors:
+                    print(f"  - {sel}")
+                return []
+            
+            # STEP 3: Extract data from each comment
+            print(f"Extracting data from {len(comment_elements)} comments...")
             
             for idx, comment_elem in enumerate(comment_elements):
                 try:
@@ -447,7 +544,7 @@ class TikTokScraper:
                     print(f"Warning: Error extracting comment {idx + 1}: {e}")
                     continue
             
-            print(f"Successfully extracted {len(comments)} comments")
+            print(f"✓ Extracted {len(comments)} comments")
             
         except PlaywrightTimeoutError:
             print("Warning: No comments found on this video (timeout waiting for comments)")
