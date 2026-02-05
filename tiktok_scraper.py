@@ -325,10 +325,9 @@ class TikTokScraper:
             try:
                 # Try to find and click the button with this selector
                 button = page.wait_for_selector(selector, timeout=5000, state='visible')
-                if button:
-                    button.click()
-                    print("✓ Comments tab clicked")
-                    return True
+                button.click()
+                print("✓ Comments tab clicked")
+                return True
             except PlaywrightTimeoutError:
                 continue
             except Exception as e:
@@ -361,7 +360,7 @@ class TikTokScraper:
             try:
                 page.wait_for_selector(selector, timeout=10000, state='visible')
                 print("✓ Comments section loaded")
-                # Add small delay for content to fully render
+                # Small delay to ensure dynamic content fully renders after state change
                 time.sleep(2)
                 return True
             except PlaywrightTimeoutError:
@@ -696,16 +695,20 @@ class TikTokScraper:
                     print("Warning: Could not verify video loaded. Attempting to continue...")
                 
                 # CLICK THE COMMENTS BUTTON (NEW STEP - CRITICAL)
+                # Note: Gracefully degrades if button not found, as UI structure may vary
                 try:
                     self.click_comments_button(page)
                 except Exception as e:
                     print(f"⚠️ Error clicking Comments button: {e}")
+                    print("⚠️ Note: Comment extraction may fail if Comments tab wasn't clicked")
                 
                 # WAIT FOR COMMENTS SECTION TO LOAD (NEW STEP - CRITICAL)
+                # Note: Attempts to proceed even if section not detected, for resilience
                 try:
                     self.wait_for_comments_section(page)
                 except Exception as e:
                     print(f"⚠️ Error waiting for comments section: {e}")
+                    print("⚠️ Note: Comment extraction may fail if section didn't load")
                 
                 # Scroll to load all comments
                 self.scroll_to_load_comments(page)
