@@ -28,6 +28,9 @@ except ImportError as e:
 class TikTokScraper:
     """TikTok comment scraper using Playwright for browser automation."""
     
+    # CSV column order
+    CSV_COLUMNS = ['comment_id', 'username', 'comment_text', 'likes', 'timestamp', 'is_reply', 'reply_to']
+    
     def __init__(self, url: str, output_file: str = "comments.csv", headless: bool = False, use_session: bool = False):
         """
         Initialize the TikTok scraper.
@@ -310,7 +313,7 @@ class TikTokScraper:
     def scroll_to_load_comments(self, page, max_scrolls: int = 20, max_retries: int = 3):
         """
         Scroll within the comments container to load more comments.
-        Uses correct selector for top-level comments.
+        Uses correct selector for top-level comments with fallback options.
         
         Args:
             page: Playwright page object
@@ -321,13 +324,33 @@ class TikTokScraper:
         last_count = 0
         no_change_count = 0
         
-        # Correct selector for top-level comments
-        comment_selector = '.css-1mzopna-7937d88b--DivCommentObjectWrapper'
+        # Multiple selectors for top-level comments (from most specific to fallbacks)
+        comment_selectors = [
+            '.css-1mzopna-7937d88b--DivCommentObjectWrapper',  # Primary selector
+            'div[class*="DivCommentObjectWrapper"]',  # Fallback without hash
+            '[data-e2e="comment-item"]'  # Generic fallback
+        ]
+        
+        # Find working selector
+        active_selector = None
+        for selector in comment_selectors:
+            try:
+                count = page.locator(selector).count()
+                if count > 0:
+                    active_selector = selector
+                    print(f"Using selector: {selector}")
+                    break
+            except Exception:
+                continue
+        
+        if not active_selector:
+            print("⚠️ No comment selector found, using default")
+            active_selector = comment_selectors[0]
         
         for i in range(max_scrolls):
             # Count current top-level comments
             try:
-                current_comments = page.locator(comment_selector).count()
+                current_comments = page.locator(active_selector).count()
             except Exception as e:
                 print(f"Warning: Error counting comments: {e}")
                 current_comments = last_count
@@ -400,11 +423,31 @@ class TikTokScraper:
                     
                     # Click to expand replies
                     reply_button.click()
-                    time.sleep(1.5)  # Wait for replies to load
                     
-                    # Now extract the reply comments using correct class selector
+                    # Wait for replies to actually load (better than time.sleep)
+                    try:
+                        # Wait for reply elements to appear in DOM
+                        page.wait_for_selector('.css-7waxo-7937d88b--DivCommentItemWrapper, div[class*="DivCommentItemWrapper"]', 
+                                              timeout=3000, state='visible')
+                    except Exception:
+                        # Fallback to short wait if selector fails
+                        time.sleep(1.5)
+                    
+                    # Now extract the reply comments using correct class selector with fallback
                     # Replies use: css-7waxo-7937d88b--DivCommentItemWrapper
-                    reply_elements = parent_comment_elem.query_selector_all('.css-7waxo-7937d88b--DivCommentItemWrapper')
+                    reply_selectors = [
+                        '.css-7waxo-7937d88b--DivCommentItemWrapper',
+                        'div[class*="DivCommentItemWrapper"]'
+                    ]
+                    
+                    reply_elements = []
+                    for selector in reply_selectors:
+                        try:
+                            reply_elements = parent_comment_elem.query_selector_all(selector)
+                            if reply_elements:
+                                break
+                        except Exception:
+                            continue
                     
                     print(f"    ✓ Found {len(reply_elements)} replies")
                     
@@ -443,7 +486,7 @@ class TikTokScraper:
                                     continue
                             
                             # Extract reply likes
-                            reply_likes = "0"
+                            reply_likes = 0
                             likes_selectors = [
                                 'span.TUXText--weight-normal[style*="color: var(--ui-text-3)"]',
                                 'span.TUXText[style*="color: var(--ui-text-3)"][style*="font-size: 14px"]'
@@ -454,8 +497,8 @@ class TikTokScraper:
                                     if likes_elem:
                                         likes_text = likes_elem.inner_text(timeout=1000)
                                         # Check if it's actually a number (not "Reply" or other text)
-                                        if likes_text.strip().replace('K', '').replace('M', '').replace('.', '').replace(',', '').isdigit():
-                                            reply_likes = likes_text
+                                        if self.is_numeric_likes(likes_text):
+                                            reply_likes = self.parse_number(likes_text)
                                             break
                                 except Exception:
                                     continue
@@ -463,7 +506,8 @@ class TikTokScraper:
                             reply_data = {
                                 'username': reply_username.strip(),
                                 'comment_text': reply_text.strip(),
-                                'likes': reply_likes.strip(),
+                                'likes': reply_likes,
+                                'timestamp': '',  # Keep consistent with top-level structure
                                 'is_reply': True,
                                 'reply_to': parent_username,
                                 'comment_id': f'comment_{parent_index}_reply_{j}'
@@ -503,10 +547,25 @@ class TikTokScraper:
                 print(f"❌ Could not find comments container: {e}")
                 return []
             
-            # Get all TOP-LEVEL comment wrappers using correct selector
-            top_level_comments = page.query_selector_all('.css-1mzopna-7937d88b--DivCommentObjectWrapper')
+            # Get all TOP-LEVEL comment wrappers using correct selector with fallback
+            comment_selectors = [
+                '.css-1mzopna-7937d88b--DivCommentObjectWrapper',  # Primary selector
+                'div[class*="DivCommentObjectWrapper"]',  # Fallback without hash
+                '[data-e2e="comment-item"]'  # Generic fallback
+            ]
             
-            print(f"✓ Found {len(top_level_comments)} top-level comments")
+            top_level_comments = []
+            active_selector = None
+            for selector in comment_selectors:
+                try:
+                    top_level_comments = page.query_selector_all(selector)
+                    if top_level_comments:
+                        active_selector = selector
+                        break
+                except Exception:
+                    continue
+            
+            print(f"✓ Found {len(top_level_comments)} top-level comments (using: {active_selector})")
             
             for i, comment_elem in enumerate(top_level_comments):
                 try:
@@ -546,7 +605,7 @@ class TikTokScraper:
                             continue
                     
                     # Extract likes - specific selector for gray text with numbers
-                    likes = "0"
+                    likes = 0
                     likes_selectors = [
                         'span.TUXText--weight-normal[style*="color: var(--ui-text-3)"]',
                         'span.TUXText[style*="color: var(--ui-text-3)"][style*="font-size: 14px"]',
@@ -557,8 +616,8 @@ class TikTokScraper:
                             if likes_elem:
                                 likes_text = likes_elem.inner_text(timeout=1000)
                                 # Check if it's actually a number (not "Reply" or other text)
-                                if likes_text.strip().replace('K', '').replace('M', '').replace('.', '').replace(',', '').isdigit():
-                                    likes = likes_text
+                                if self.is_numeric_likes(likes_text):
+                                    likes = self.parse_number(likes_text)
                                     break
                         except Exception:
                             continue
@@ -584,7 +643,7 @@ class TikTokScraper:
                     comment_data = {
                         'username': username.strip(),
                         'comment_text': comment_text.strip(),
-                        'likes': likes.strip(),
+                        'likes': likes,
                         'timestamp': timestamp.strip(),
                         'is_reply': False,
                         'reply_to': '',
@@ -640,6 +699,21 @@ class TikTokScraper:
         except (ValueError, TypeError):
             return 0
     
+    def is_numeric_likes(self, text: str) -> bool:
+        """
+        Validate if text is numeric (for likes count validation).
+        
+        Args:
+            text: Text to validate
+            
+        Returns:
+            True if text represents a number, False otherwise
+        """
+        if not text:
+            return False
+        cleaned = text.strip().replace('K', '').replace('M', '').replace('.', '').replace(',', '')
+        return cleaned.isdigit()
+    
     def save_to_csv(self, comments: List[Dict]):
         """
         Save comments to CSV file.
@@ -653,13 +727,11 @@ class TikTokScraper:
         
         try:
             df = pd.DataFrame(comments)
-            # Reorder columns to match specification
-            columns_order = ['comment_id', 'username', 'comment_text', 'likes', 'timestamp', 'is_reply', 'reply_to']
             # Ensure all columns exist
-            for col in columns_order:
+            for col in self.CSV_COLUMNS:
                 if col not in df.columns:
-                    df[col] = ''
-            df = df[columns_order]
+                    df[col] = '' if col != 'likes' else 0
+            df = df[self.CSV_COLUMNS]
             
             df.to_csv(self.output_file, index=False, encoding='utf-8', quoting=csv.QUOTE_ALL)
             
@@ -674,8 +746,7 @@ class TikTokScraper:
             # Fallback to basic CSV writing
             try:
                 with open(self.output_file, 'w', newline='', encoding='utf-8') as f:
-                    fieldnames = ['comment_id', 'username', 'comment_text', 'likes', 'timestamp', 'is_reply', 'reply_to']
-                    writer = csv.DictWriter(f, fieldnames=fieldnames)
+                    writer = csv.DictWriter(f, fieldnames=self.CSV_COLUMNS)
                     writer.writeheader()
                     writer.writerows(comments)
                 print(f"✓ Saved using fallback method to {self.output_file}")
